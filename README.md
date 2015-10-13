@@ -1,5 +1,5 @@
 ##cjson
-*A nice object driven JSON parser and serializer for C++.**
+**A nice object driven JSON parser and serializer for C++.**
 
 Features:
 
