@@ -1,5 +1,5 @@
 ##cjson
-**a nice object driven JSON parser and serializer.**
+*A nice object driven JSON parser and serializer for C++.**
 
 Features:
 
@@ -10,7 +10,11 @@ Features:
 - Fast! It can Parse and Stringify at nearly the same speed (which is fast).On my Core i7 I was able to parse a heavily nest 185MB JSON file in 3930ms. I was able to serialize it out to a non-pretified 124MB JSON	file in 4140ms. 
 - Easily incorporated into code that must call REST endpoints or where you want configuration in JSON rather than CONF formats.
 
+Note:
+
 Make sure to get my [HeapStack](https://github.com/SethHamilton/HeapStack) tool, as this will require it.
+
+
 
 The MIT License (MIT)
 
