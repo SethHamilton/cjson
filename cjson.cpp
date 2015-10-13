@@ -492,7 +492,7 @@ cjson* cjson::find(const char* Name)
 
 	while (n)
 	{
-		if (n->nodeName && (n->nodeName, Name) == 0)
+		if (n->nodeName && strcmp(n->nodeName, Name) == 0)
 			return n;
 
 		n = n->siblingNext;
