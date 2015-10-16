@@ -323,16 +323,18 @@ cjson* cjson::ParseBranch( cjson* N, char* &cursor )
   Member functions for cjson
 */
 
-cjson::cjson(HeapStack* MemObj) :
+cjson::cjson(HeapStack* MemObj, cjson* RootObj) :
 	nodeType(cjsonType::VOIDED),
+	mem(MemObj),
+	rootNode(RootObj),
+	parentNode(NULL),
 	nodeName(NULL),
 	nodeData(NULL),
 	siblingPrev(NULL),
 	siblingNext(NULL),
 	membersHead(NULL),
 	membersTail(NULL),
-	memberCount(0),
-	mem(MemObj)
+	memberCount(0)
 {
 };
 
@@ -344,7 +346,7 @@ cjson::~cjson()
 	// our allocations
 };
 
-cjsonType cjson::getType()
+cjsonType cjson::type()
 {
 	return nodeType;
 };
@@ -373,7 +375,7 @@ void cjson::setType(cjsonType Type)
 cjson* cjson::createNode()
 {
 	char* nodePtr = mem->newPtr(sizeof(cjson));
-	return new (nodePtr) cjson(mem);
+	return new (nodePtr) cjson(mem, rootNode );
 };
 
 cjson* cjson::createNode(cjsonType Type, const char* Name)
@@ -401,6 +403,24 @@ void cjson::removeNode()
 	membersTail = NULL;
 	memberCount = 0;		 
 };
+
+cjson* cjson::hasMembers()
+{
+	return parentNode;
+}
+
+cjson* cjson::hasParent()
+{
+	return this->membersHead;
+}
+
+
+cjson::curs cjson::cursor()
+{
+	//char* ptr = mem->newPtr(sizeof(cjson::iter));
+	curs newIter(this);
+	return newIter;
+}
 
 bool cjson::isNode(std::string xPath)
 {
@@ -500,6 +520,36 @@ cjson* cjson::find(const char* Name)
 
 	return NULL;
 }
+
+int cjson::getIndex()
+{
+
+	cjson* n = this->siblingPrev;
+
+	if (!n)
+		return 0;
+
+	while (1) // rewind
+	{
+		if (!n->siblingPrev)
+			break;
+		n = n->siblingPrev;
+	}
+
+	int idx = 0;
+
+	while (n)
+	{
+		if (n == this)
+			return idx;
+
+		idx++;
+		n = n->siblingNext;
+	}
+
+	return idx;
+}
+
 
 cjson* cjson::find(std::string Name)
 {
@@ -857,9 +907,46 @@ cjson* cjson::xPath(std::string Path)
 	return NULL;
 };
 
+std::string cjson::xPath()
+{
+	std::string path;
+
+	cjson* n = this;
+	const char* name;
+
+	while (n)
+	{
+		if (n != this)
+			path = '/' + path;
+
+		name = n->nameCstr();
+
+		if (name && *name) // is there a name?
+		{
+			if (strcmp(name, "__root__") == 0)
+				break;
+
+			path = name + path;
+		} 
+		else // no name means it's an array item
+		{
+			path = std::to_string(n->getIndex()) + path;
+		}
+
+		n = n->parentNode;
+
+	}
+
+	if (!path.length())
+		return "/";
+
+	return path;
+
+}
+
 
 // helpers for serialization
-std::string cjson::getName()
+std::string cjson::name()
 {
 	if (nodeName)
 		return std::string((char*)nodeName);
@@ -867,7 +954,7 @@ std::string cjson::getName()
 		return std::string("");
 };
 
-const char* cjson::getNameCstr()
+const char* cjson::nameCstr()
 {
 	if (nodeName)
 		return (const char*)nodeName;
@@ -933,8 +1020,6 @@ bool cjson::isNull()
 	return false;
 };
 
-
-
 cjson* cjson::Parse( const char* JSON )
 {
 	char* cursor = (char*)JSON;
@@ -970,12 +1055,12 @@ void cjson::DisposeDocument( cjson* Document )
 
 cjson* cjson::MakeDocument()
 {
-	HeapStack* mem = new HeapStack();
+	HeapStack* mem = new HeapStack( 2048 );
 	void* Data = mem->newPtr(sizeof(cjson));
 
 	// we are going to allocate this node using "palcement new"
 	// in the HeapStack
-	cjson* newNode = new (Data) cjson(mem);
+	cjson* newNode = new (Data) cjson(mem, NULL);
 
 	newNode->setName("__root__");
 	newNode->setType(cjsonType::OBJECT);
@@ -994,7 +1079,7 @@ cjson* cjson::GetNodeByPath(std::string Path)
 	for (int i = 0; i < parts.size(); i++)
 	{
 
-		switch (N->getType())
+		switch (N->nodeType)
 		{
 		case cjsonType::OBJECT:
 		{
@@ -1032,6 +1117,8 @@ cjson* cjson::GetNodeByPath(std::string Path)
 // internal add member
 void cjson::Link(cjson* newNode)
 {
+
+	newNode->parentNode = this;
 
 	// members are basically children directly owned
 	// by the current node. They are stored as a linked
@@ -1094,7 +1181,7 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 		if (N->hasName())
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":");
 		}
 
@@ -1105,7 +1192,7 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 		if (N->hasName())
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":");
 		}
 
@@ -1117,7 +1204,7 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 		if (N->hasName())
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":");
 		}
 
@@ -1138,7 +1225,7 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 		if (N->hasName())
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":");
 		}
 
@@ -1151,7 +1238,7 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 		if (N->hasName())
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":");
 		}
 
@@ -1162,12 +1249,12 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 	{
 		int Count = N->size();
 
-		if (!N->hasName() || N->getName() == "__root__")
+		if (!N->hasName() || strcmp( N->nameCstr() , "__root__" ) == 0)
 			emitText(writer, '[');
 		else
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":[");
 		}
 
@@ -1188,14 +1275,12 @@ void cjson::Stringify_worker(cjson* N, char* &writer)
 	{
 		int Count = N->size();
 
-		std::string name = N->getName();
-
-		if (!N->hasName() || N->getName() == "__root__")
+		if (!N->hasName() || strcmp(N->nameCstr(), "__root__") == 0)
 			emitText(writer, '{');
 		else
 		{
 			emitText(writer, '"');
-			emitText(writer, N->getNameCstr());
+			emitText(writer, N->nameCstr());
 			emitText(writer, "\":{");
 		}
 

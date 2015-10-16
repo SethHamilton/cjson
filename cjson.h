@@ -59,7 +59,7 @@ enum class cjsonType : int64_t { VOIDED, NUL, OBJECT, ARRAY, INT, DBL, STR, BOOL
 
 class cjson 
 {
-public:
+private:
 
 	HeapStack* mem;
 
@@ -90,13 +90,118 @@ public:
 	// this is how array and object values are stored
 	cjson* membersHead;
 	cjson* membersTail;
-	int        memberCount;
+	int memberCount;
 
 	// next and previous sibling in to this members node list
 	cjson* siblingPrev;
 	cjson* siblingNext;
+	cjson* parentNode;
+	cjson* rootNode;
 
-	cjson(HeapStack* MemObj);
+public:
+	struct curs
+	{
+
+		cjson* original;
+		cjson* current;
+
+		curs(cjson* currentNode) :
+			current(currentNode),
+			original(currentNode)
+		{
+
+		};
+
+		// reset cursor to it's orignal state (the cjson node it started on)
+		void reset()
+		{
+			current = original;
+		}
+
+		// similar to -- operator, but won't leave
+		// current NULL when you hit the begining of the list
+		// it will return false and leave current at the last
+		// good cjson node
+		bool next()
+		{
+			if (current && current->siblingNext)
+			{
+				current = current->siblingNext;
+				return true;
+			}
+			return false;
+		}
+
+		// similar to ++ operator, but won't leave
+		// current NULL when you hit the begining of the list
+		// it will return false and leave current at the last
+		// good cjson node
+		bool prev()
+		{
+			if (current && current->siblingPrev)
+			{
+				current = current->siblingPrev;
+				return true;
+			}
+			return false;
+		}
+
+		// move up to the parent node
+		bool up()
+		{
+			if (current && current->parentNode)
+			{
+				current = current->parentNode;
+				return true;
+			}
+			return false;
+		}
+
+		// move to first child
+		// returns true or false, leaves current at last good node
+		bool down()
+		{
+			if (current && current->membersHead)
+			{
+				current = current->membersHead;
+				return true;
+			}
+			return false;
+		}
+
+		// get current node (or null)
+		// you can also use myiter.current to access the node you want
+		cjson* operator()()
+		{
+			return current;
+		}
+
+		// move to next sibling, will set current to null
+		// when the end found
+		curs& operator++(int)
+		{
+			if (current && current->siblingNext)
+				current = current->siblingNext;
+			else
+				current = NULL;
+			return *this;
+		}
+
+		// move to previous sibling, will set current to null
+		// when the end found
+		curs& operator--(int)
+		{
+			if (current && current->siblingPrev)
+				current = current->siblingPrev;
+			else
+				current = NULL;
+			return *this;
+		}
+
+
+	};
+
+	cjson(HeapStack* MemObj, cjson* RootObj );
 
 	~cjson();
 
@@ -106,9 +211,9 @@ public:
 	-------------------------------------------------------------------------
 	*/
 	
-	cjsonType getType(); // returns the node type cjsonNode:: is the enum
-	std::string getName(); // returns the node name or ""
-	const char* getNameCstr(); // returns pointer to node name or NULL
+	cjsonType type(); // returns the node type cjsonNode:: is the enum
+	std::string name(); // returns the node name or ""
+	const char* nameCstr(); // returns pointer to node name or NULL
 
 	void setName(const char* newName);
 	void setName(std::string newName);
@@ -146,6 +251,14 @@ public:
 	cjson* createNode(cjsonType Type, const char* Name);
 	cjson* createNode(cjsonType Type, std::string Name);
 	void   removeNode();
+
+	cjson* hasMembers();
+	cjson* hasParent();
+
+	// return a cursor, which can be used to navigate
+	// the document (see the cursor struct above for members).
+	// the cursor will start at the node you call it from
+	curs   cursor();
 
 	/*
 	-------------------------------------------------------------------------
@@ -265,6 +378,8 @@ public:
 	std::string xPath(std::string Path, std::string Default);
 	// returns a node or NULL;
 	cjson* xPath(std::string Path);
+
+	std::string xPath(); // return the current xpath;
 		
 	/*
 	-------------------------------------------------------------------------
@@ -335,7 +450,10 @@ private:
 	// funtion used by xPath functions
 	cjson* GetNodeByPath(std::string Path);
 	// worker used stringifyC
-	void cjson::Stringify_worker(cjson* N, char* &writer);
+	void Stringify_worker(cjson* N, char* &writer);
+
+	// helper used to find the index of current node in a members list
+	int getIndex();
 
 
 };
